@@ -1,5 +1,7 @@
 import uuid
 import datetime
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 STATUSES = {
     'y': 'Wypozyczyl',
@@ -10,6 +12,11 @@ BOOKSTATUSES = {
     'y': "Wypozyczona",
     'r': 'Zarezerwowana',
     'f': 'Dostepna'
+}
+
+book = {
+    'name': 'somename',
+    'author': 'Jan Kowalski'
 }
 
 class Person:
@@ -65,16 +72,16 @@ class Book:
         self.pages = pages
         self.author = author
         self._generate_id()
-        self._status = BOOKSTATUSES['f']
+        self.status = BOOKSTATUSES['f']
 
     def _generate_id(self):
         self._id = uuid.uuid4()
 
     def __str__(self):
-        return f'{self.title} {self.category.name} strony: {self.pages} {self.author.first_name} {self.author.last_name} id: {self._id} status: {self._status}'
+        return f'{self.title} {self.category.name} strony: {self.pages} {self.author.first_name} {self.author.last_name} id: {self._id} status: {self.status}'
 
     def __repr__(self):
-        return f'{self.title} {self.category.name} strony: {self.pages} {self.author.first_name} {self.author.last_name} id: {self._id} status: {self._status}'
+        return f'{self.title} {self.category.name} strony: {self.pages} {self.author.first_name} {self.author.last_name} id: {self._id} status: {self.status}'
 
 class BookCategory:
     def __init__(self, name):
@@ -88,52 +95,130 @@ class BookCategory:
 
 class Library:
     def __init__(self):
-        self._books = []
-        self._lenders = []
+        self.client = MongoClient('127.0.0.1', 27017)
+        self.db = self.client['librarydb']
+        self.books = self.db.books
+        self.lenders = self.db.lenders
+        self.authors = self.db.authors
+        self._books_id = []
+        self._lenders_id = []
 
     def add_book(self, book):
-        self._books.append(book)
+        new_book = {
+            'title': book.title,
+            'category': book.category,
+            'pages': book.pages,
+            'author': 'IwezTuDajReferencje',
+            'status': book.status
+        }
+        self._books_id.append(self.books.insert_one(new_book))
+    
+    def show_books(self):
+        for b in self.books.find({}):
+            print(b)
+
+    def show_lenders(self):
+        for l in self.lenders.find({}):
+            print(l)
 
     def add_lender(self, lender):
-        self._lenders.append(lender)
+        new_lender = {'first_name': lender.first_name,
+        'last_name': lender.last_name, 
+        'country': lender.country, 
+        'gender': lender.gender, 
+        'birthdate': lender.birthdate,
+        'borrowed_books': lender._borrowed_books
+        }
+        self._lenders_id.append(self.lenders.insert_one(new_lender))
 
-    def lend_book(self, book, lender):
-        book._status = BOOKSTATUSES['y']
-        lender._status = STATUSES['y']
-        lender._borrowed_books.append(book)
+    def lend_book(self, book_id, lender_id):
+        self.books.update_one({'_id': book_id}, {
+            '$set': {'status': BOOKSTATUSES['y']}
+        })
+        for tmp in self.lenders.find({'_id': lender_id}):
+            tmp_tab = tmp['borrowed_books']
+        tmp_tab.append(book_id)
+        self.lenders.update_one({'_id': lender_id}, {
+            '$set': {'borrowed_books': tmp_tab}
+        })
     
-    def return_book(self, book, lender):
-        book._status = BOOKSTATUSES['f']
-        for b in lender._borrowed_books:
-            if b.title == book.title:
-                lender._borrowed_books.remove(b)
-        if not lender._borrowed_books:
-            lender._status = STATUSES['f']
+    def return_book(self, book_id, lender_id):
+        self.books.update_one({'_id': book_id}, {
+            '$set': {'status': BOOKSTATUSES['f']}
+        })
+        for tmp in self.lenders.find({'_id': lender_id}):
+            tmp_tab = tmp['borrowed_books']
+        for b in tmp_tab:
+            if b == book_id:
+                tmp_tab.remove(b)
+        self.lenders.update_one({'_id': lender_id}, {
+            '$set': {'borrowed_books': tmp_tab}
+        })
 
-    def get_book(self, passed_id):
-        for b in self._books:
-            if b._id == passed_id:
-                return b
+    # def get_book(self, passed_id):
+    #     for b in self._books:
+    #         if b._id == passed_id:
+    #             return b
 
-    def return_all_books(self):
-        for book in self._books:
-            print(book)
+    # def return_all_books(self):
+    #     for book in self._books:
+    #         print(book)
 
-sample_author = Author("Jan", "Kowalski", "Poland", "Male", '1999-08-31')
+def menu():
+    lib = Library()
+    terminator = 0
+    while terminator == 0:
+        choice = str(input('What do you want to do? Type: lib help for help.> '))
+        if choice == 'lib help':
+            print("lib add - adding new book\nlib add author - adding new author\nlib show - showing books in database\nlib add lender - adding new lender\nlib show lenders - showing all lenders stored in database\nlib lend - lend a book\nlib quit - end program")
+        if choice == 'lib add':
+            inp = str(input("Give title-category-pages-author "))
+            t,c,p,a = inp.split('-')
+            lib.add_book(Book(t, c, p, a))
+        if choice == 'lib show':
+            lib.show_books()
+        if choice == 'lib show lenders':
+            lib.show_lenders()
+        if choice == 'lib lend':
+            inp = str(input("Give book id-lender id "))
+            bid, lid = inp.split('-')
+            lib.lend_book(ObjectId(bid), ObjectId(lid))
+        if choice == 'lib return':
+            inp = str(input("Give book id-lender id "))
+            bid, lid = inp.split('-')
+            lib.return_book(ObjectId(bid), ObjectId(lid))
+        if choice == 'lib add lender':
+            inp = str(input("Give firstname_lastname_country_gender_birthdate "))
+            f, l, c, g, b = inp.split('_')
+            lib.add_lender(Lender(f, l, c, g, b))
+        if choice == 'lib quit':
+            terminator = 1
 
-any_lender = Lender("Jan", 'Nowak', "Poland", "male", '2006-08-02')
+menu()
+# sample_author = Author("Jan", "Kowalski", "Poland", "Male", '1999-08-31')
 
-fantasy = BookCategory("Fantasy")
+# any_lender = Lender("Jan", 'Nowak', "Poland", "male", '2006-08-02')
 
-my_book = Book("My Title", fantasy, 360, sample_author)
+# fantasy = BookCategory("Fantasy")
 
-my_library = Library()
-my_library.add_book(my_book)
-my_library.add_lender(any_lender)
-my_library.lend_book(my_book, any_lender)
-print(any_lender)
-my_library.return_book(my_book, any_lender)
-print(any_lender)
-print(my_library.get_book(my_book._id))
-print('---END---')
-print()
+# my_book = Book("My Title", fantasy, 360, sample_author)
+# client = MongoClient('127.0.0.1', 27017)
+# db = client['librarydb']
+# books = db.books
+# books.delete_many({})
+
+###########################
+# book_id = books.insert_one(book).inserted_id
+# print(book_id)
+# print(books.find_one({'_id': book_id}))
+# for book in books.find({}):
+#     print(book)
+
+# my_library = Library()
+# my_library.add_book(my_book)
+# my_library.add_lender(any_lender)
+# my_library.lend_book(my_book, any_lender)
+# print(any_lender)
+# my_library.return_book(my_book, any_lender)
+# print(any_lender)
+# print(my_library.get_book(my_book._id))
