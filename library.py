@@ -132,28 +132,36 @@ class Library:
         self._lenders_id.append(self.lenders.insert_one(new_lender))
 
     def lend_book(self, book_id, lender_id):
-        self.books.update_one({'_id': book_id}, {
-            '$set': {'status': BOOKSTATUSES['y']}
-        })
-        for tmp in self.lenders.find({'_id': lender_id}):
-            tmp_tab = tmp['borrowed_books']
-        tmp_tab.append(book_id)
-        self.lenders.update_one({'_id': lender_id}, {
-            '$set': {'borrowed_books': tmp_tab}
-        })
+        for b in self.books.find({'_id': book_id}):
+            checkbook = b
+        if checkbook['status'] == BOOKSTATUSES['f']:
+            self.books.update_one({'_id': book_id}, {
+                '$set': {'status': BOOKSTATUSES['y']}
+            })
+            for tmp in self.lenders.find({'_id': lender_id}):
+                tmp_tab = tmp['borrowed_books']
+            tmp_tab.append(book_id)
+            self.lenders.update_one({'_id': lender_id}, {
+                '$set': {'borrowed_books': tmp_tab}
+            })
+        else:
+            print("This book is lended!")
     
     def return_book(self, book_id, lender_id):
-        self.books.update_one({'_id': book_id}, {
-            '$set': {'status': BOOKSTATUSES['f']}
-        })
         for tmp in self.lenders.find({'_id': lender_id}):
             tmp_tab = tmp['borrowed_books']
-        for b in tmp_tab:
-            if b == book_id:
-                tmp_tab.remove(b)
-        self.lenders.update_one({'_id': lender_id}, {
-            '$set': {'borrowed_books': tmp_tab}
-        })
+        if book_id in tmp_tab:
+            self.books.update_one({'_id': book_id}, {
+                '$set': {'status': BOOKSTATUSES['f']}
+            })
+            for b in tmp_tab:
+                if b == book_id:
+                    tmp_tab.remove(b)
+            self.lenders.update_one({'_id': lender_id}, {
+                '$set': {'borrowed_books': tmp_tab}
+            })
+        else:
+            print("This person did not lend this book.")
 
     # def get_book(self, passed_id):
     #     for b in self._books:
