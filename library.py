@@ -9,9 +9,9 @@ STATUSES = {
 }
 
 BOOKSTATUSES = {
-    'y': "Wypozyczona",
-    'r': 'Zarezerwowana',
-    'f': 'Dostepna'
+    'y': "Lended",
+    'r': 'Reserved',
+    'f': 'Available'
 }
 
 book = {
@@ -102,16 +102,24 @@ class Library:
         self.authors = self.db.authors
         self._books_id = []
         self._lenders_id = []
+        # self.books.delete_many({})
+        # self.lenders.delete_many({})
 
     def add_book(self, book):
-        new_book = {
-            'title': book.title,
-            'category': book.category,
-            'pages': book.pages,
-            'author': 'IwezTuDajReferencje',
-            'status': book.status
-        }
-        self._books_id.append(self.books.insert_one(new_book))
+        writer = 0
+        for a in self.authors.find({'_id': book.author}):
+            writer = a
+        if writer:
+            new_book = {
+                'title': book.title,
+                'category': book.category,
+                'pages': book.pages,
+                'author': writer['first_name'] + ' ' + writer['last_name'],
+                'status': book.status
+            }
+            self._books_id.append(self.books.insert_one(new_book))
+        else:
+            print("This author does not exist in database. Would you like to add him instead? Use lib add author.")
     
     def show_books(self):
         for b in self.books.find({}):
@@ -120,6 +128,33 @@ class Library:
     def show_lenders(self):
         for l in self.lenders.find({}):
             print(l)
+    
+    def show_authors(self):
+        for a in self.authors.find({}):
+            print(a)
+
+    def convert_id_to_book(self, tab):
+        ret_str = ''
+        for x in tab:
+            for b in self.books.find({'_id': x}):
+                ret_str += b['title'] + ' ' + b['author'] + ' id: ' + str(b['_id']) + '\t'
+        print(ret_str)
+        return ret_str
+
+    def show_lends(self):
+        for l in self.lenders.find({}):
+            somestr = self.convert_id_to_book(l['borrowed_books'])
+            print(l['first_name'], ' ', l['last_name'], ' with id: ', l['_id'], 'borrowed: ', somestr)
+
+    def add_author(self, author):
+        new_author = {
+            'first_name': author.first_name,
+            'last_name': author.last_name, 
+            'country': author.country, 
+            'gender': author.gender, 
+            'birthdate': author.birthdate
+        }
+        self.authors.insert_one(new_author)
 
     def add_lender(self, lender):
         new_lender = {'first_name': lender.first_name,
@@ -178,23 +213,40 @@ def menu():
     while terminator == 0:
         choice = str(input('What do you want to do? Type: lib help for help.> '))
         if choice == 'lib help':
-            print("lib add - adding new book\nlib add author - adding new author\nlib show - showing books in database\nlib add lender - adding new lender\nlib show lenders - showing all lenders stored in database\nlib lend - lend a book\nlib quit - end program")
+            print("lib add - adding new book\nlib add author - adding new author\nlib add lender - adding new lender\nlib show - showing books in database\nlib show lenders - showing all lenders stored in database\nlib show authors - shows all authors stored in database\nlib show lends - showing lenders and it's borrowed books\nlib lend - lend a book\nlib quit - end program")
         if choice == 'lib add':
-            inp = str(input("Give title-category-pages-author "))
+            inp = str(input("Give title-category-pages-author id "))
             t,c,p,a = inp.split('-')
-            lib.add_book(Book(t, c, p, a))
+            if len(a) == 12 or len(a) == 24:
+                lib.add_book(Book(t, c, p, ObjectId(a)))
+            else:
+                print("Something wrong with id length!")
+        if choice == 'lib add author':
+            inp = str(input("Give firstname_lastname_country_gender_birthdate "))
+            f, l, c, g, b = inp.split('_')
+            lib.add_author(Author(f, l, c, g, b))
         if choice == 'lib show':
             lib.show_books()
         if choice == 'lib show lenders':
             lib.show_lenders()
+        if choice == 'lib show authors':
+            lib.show_authors()
+        if choice == 'lib show lends':
+            lib.show_lends()
         if choice == 'lib lend':
             inp = str(input("Give book id-lender id "))
             bid, lid = inp.split('-')
-            lib.lend_book(ObjectId(bid), ObjectId(lid))
+            if len(bid) == 12 or len(bid) == 24 and len(lid) == 12 or len(lid) == 24:
+                lib.lend_book(ObjectId(bid), ObjectId(lid))
+            else:
+                print("Something wrong with id length!")
         if choice == 'lib return':
             inp = str(input("Give book id-lender id "))
             bid, lid = inp.split('-')
-            lib.return_book(ObjectId(bid), ObjectId(lid))
+            if len(bid) == 12 or len(bid) == 24 and len(lid) == 12 or len(lid) == 24:
+                lib.return_book(ObjectId(bid), ObjectId(lid))
+            else:
+                print("Something wrong with id length!")
         if choice == 'lib add lender':
             inp = str(input("Give firstname_lastname_country_gender_birthdate "))
             f, l, c, g, b = inp.split('_')
